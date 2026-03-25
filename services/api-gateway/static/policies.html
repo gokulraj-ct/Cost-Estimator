@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Kostructure - Policy Management</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1 { margin-bottom: 30px; color: #333; }
+        .policy-card { background: white; border-radius: 8px; padding: 20px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .policy-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .policy-name { font-size: 18px; font-weight: 600; color: #333; }
+        .policy-id { color: #666; font-size: 14px; }
+        .policy-desc { color: #666; margin-bottom: 15px; }
+        .policy-meta { display: flex; gap: 15px; margin-bottom: 15px; }
+        .badge { padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 500; }
+        .badge-critical { background: #fee; color: #c00; }
+        .badge-high { background: #ffeaa7; color: #d63031; }
+        .badge-medium { background: #fff3cd; color: #856404; }
+        .badge-low { background: #d1ecf1; color: #0c5460; }
+        .toggle { position: relative; display: inline-block; width: 50px; height: 24px; }
+        .toggle input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 24px; }
+        .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: #2196F3; }
+        input:checked + .slider:before { transform: translateX(26px); }
+        .nav { margin-bottom: 20px; }
+        .nav a { color: #2196F3; text-decoration: none; margin-right: 20px; font-weight: 500; }
+        .nav a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="nav">
+            <a href="/policies">Policies</a>
+            <a href="/pr-estimates">PR Estimates</a>
+        </div>
+        <h1>🔒 Policy Management</h1>
+        <div id="policies"></div>
+    </div>
+
+    <script>
+        async function loadPolicies() {
+            const response = await fetch('/api/v1/policies');
+            const data = await response.json();
+            
+            const container = document.getElementById('policies');
+            container.innerHTML = '';
+            
+            data.policies.forEach(policy => {
+                const card = document.createElement('div');
+                card.className = 'policy-card';
+                
+                const severityClass = `badge-${policy.severity}`;
+                
+                card.innerHTML = `
+                    <div class="policy-header">
+                        <div>
+                            <div class="policy-name">${policy.name}</div>
+                            <div class="policy-id">${policy.id}</div>
+                        </div>
+                        <label class="toggle">
+                            <input type="checkbox" ${policy.enabled ? 'checked' : ''} 
+                                   onchange="togglePolicy('${policy.id}', this.checked)">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="policy-desc">${policy.description || ''}</div>
+                    <div class="policy-meta">
+                        <span class="badge ${severityClass}">${policy.severity.toUpperCase()}</span>
+                        <span class="badge" style="background: #e3f2fd; color: #1976d2;">${policy.category}</span>
+                        <span class="badge" style="background: #f3e5f5; color: #7b1fa2;">${policy.resource_type}</span>
+                    </div>
+                `;
+                
+                container.appendChild(card);
+            });
+        }
+        
+        async function togglePolicy(policyId, enabled) {
+            await fetch(`/api/v1/policies/${policyId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled })
+            });
+        }
+        
+        loadPolicies();
+    </script>
+</body>
+</html>

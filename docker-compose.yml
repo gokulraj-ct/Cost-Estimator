@@ -1,0 +1,130 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: kostructure-postgres
+    environment:
+      POSTGRES_DB: kostructure
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: kostructure-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Parser Service (Go)
+  parser-service:
+    build: ./services/parser-service
+    container_name: kostructure-parser
+    ports:
+      - "8001:8001"
+    depends_on:
+      - redis
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+
+  # Cost Service (Python)
+  cost-service:
+    build: ./services/cost-service
+    container_name: kostructure-cost
+    ports:
+      - "8002:8002"
+    depends_on:
+      - redis
+    env_file:
+      - .env.aws
+    environment:
+      - PORT=8002
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - AWS_PROFILE=${AWS_PROFILE:-default}  # Support AWS profiles
+      - USE_AWS_PRICING=false  # Disable AWS Pricing API (use fallback)
+    volumes:
+      # Mount AWS credentials from host (supports IAM roles via profiles)
+      - ~/.aws:/root/.aws:ro
+
+  # Policy Service (Python)
+  policy-service:
+    build: ./services/policy-service
+    container_name: kostructure-policy
+    ports:
+      - "8004:8004"
+    environment:
+      - PORT=8004
+      - API_GATEWAY_URL=http://api-gateway:8000
+
+  # API Gateway (Python)
+  api-gateway:
+    build: ./services/api-gateway
+    container_name: kostructure-api
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      parser-service:
+        condition: service_started
+      cost-service:
+        condition: service_started
+    environment:
+      - PORT=8000
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=kostructure
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - PARSER_SERVICE_URL=http://parser-service:8001
+      - COST_SERVICE_URL=http://cost-service:8002
+      - POLICY_SERVICE_URL=http://policy-service:8004
+      - DISABLE_AUTH=true
+      - DISABLE_RATE_LIMIT=true
+
+  # Web Frontend (Next.js)
+  web:
+    build: ./web
+    container_name: kostructure-web
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api-gateway
+
+  # GitHub Bot (Python)
+  github-bot:
+    build: ./services/github-bot
+    container_name: kostructure-github-bot
+    ports:
+      - "8003:8003"
+    depends_on:
+      - api-gateway
+    environment:
+      - PORT=8003
+      - API_GATEWAY_URL=http://api-gateway:8000
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - GITHUB_WEBHOOK_SECRET=${GITHUB_WEBHOOK_SECRET}
+
+volumes:
+  postgres_data:
