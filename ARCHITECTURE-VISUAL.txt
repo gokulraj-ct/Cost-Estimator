@@ -1,0 +1,295 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                        KOSTRUCTURE ARCHITECTURE                              ║
+║                   AWS Infrastructure Cost Estimator                          ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                              USER LAYER                                      │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+    ┌─────────────┐      ┌─────────────┐      ┌─────────────┐      ┌─────────┐
+    │   Web UI    │      │  CLI Tool   │      │ GitHub Bot  │      │   API   │
+    │  :3000      │      │  (Binary)   │      │  :8003      │      │ Direct  │
+    │             │      │             │      │             │      │         │
+    │ • Charts    │      │ • Terminal  │      │ • Webhooks  │      │ • REST  │
+    │ • Upload    │      │ • Batch     │      │ • Comments  │      │ • JSON  │
+    │ • History   │      │ • Local     │      │ • Auto      │      │         │
+    └──────┬──────┘      └──────┬──────┘      └──────┬──────┘      └────┬────┘
+           │                    │                    │                   │
+           └────────────────────┴────────────────────┴───────────────────┘
+                                        │
+                                        ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                           GATEWAY LAYER                                      │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+                        ┌─────────────────────────┐
+                        │    API GATEWAY :8000    │
+                        ├─────────────────────────┤
+                        │ • Request Routing       │
+                        │ • Response Aggregation  │
+                        │ • Database Operations   │
+                        │ • History Management    │
+                        │ • Error Handling        │
+                        └───────┬─────────┬───────┘
+                                │         │
+                ┌───────────────┘         └───────────────┐
+                │                                         │
+                ▼                                         ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                          SERVICE LAYER                                       │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+    ┌──────────────────────────┐              ┌──────────────────────────┐
+    │  PARSER SERVICE :8001    │              │  COST SERVICE :8002      │
+    ├──────────────────────────┤              ├──────────────────────────┤
+    │ Technology: Go           │              │ Technology: Python       │
+    │                          │              │                          │
+    │ • HCL Parsing            │              │ • Cost Calculation       │
+    │ • Resource Extraction    │              │ • AWS Pricing API        │
+    │ • Region Detection       │              │ • Plugin Architecture    │
+    │ • Syntax Validation      │              │ • Fallback Pricing       │
+    │ • Caching (Redis)        │              │ • Multi-Region           │
+    │                          │              │                          │
+    │ Plugins:                 │              │ Plugins:                 │
+    │ • aws_instance           │              │ • EC2 Calculator         │
+    │ • aws_db_instance        │              │ • RDS Calculator         │
+    │ • aws_s3_bucket          │              │ • S3 Calculator          │
+    │ • aws_lb                 │              │ • LB Calculator          │
+    └────────────┬─────────────┘              └────────────┬─────────────┘
+                 │                                         │
+                 └────────────┬────────────────────────────┘
+                              │
+                              ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                           DATA LAYER                                         │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+        ┌──────────────────────────┐          ┌──────────────────────────┐
+        │  PostgreSQL :5432        │          │  Redis :6379             │
+        ├──────────────────────────┤          ├──────────────────────────┤
+        │ • Cost Estimates         │          │ • Parsing Cache          │
+        │ • History Tracking       │          │ • Rate Limiting          │
+        │ • Metadata Storage       │          │ • Session Data           │
+        │                          │          │ • TTL: 1 hour            │
+        │ Schema:                  │          │                          │
+        │   estimates              │          │ Keys:                    │
+        │   ├─ id                  │          │   parse:<hash>           │
+        │   ├─ total_cost          │          │   rate_limit:<key>       │
+        │   ├─ region              │          │                          │
+        │   ├─ resources (JSONB)   │          │                          │
+        │   └─ created_at          │          │                          │
+        └──────────────────────────┘          └──────────────────────────┘
+                              │
+                              ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                      EXTERNAL INTEGRATIONS                                   │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+    ┌────────────────┐      ┌────────────────┐      ┌────────────────┐
+    │ AWS Pricing    │      │  GitHub API    │      │     ngrok      │
+    │ API            │      │                │      │                │
+    ├────────────────┤      ├────────────────┤      ├────────────────┤
+    │ • us-east-1    │      │ • Webhooks     │      │ • Tunnel       │
+    │ • Real-time    │      │ • PR Comments  │      │ • Public URL   │
+    │ • Fallback     │      │ • File Fetch   │      │ • Dev/Test     │
+    └────────────────┘      └────────────────┘      └────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                              DATA FLOW DIAGRAM
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────┐
+│  User   │ Uploads main.tf
+└────┬────┘
+     │
+     ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ API Gateway                                                                 │
+│ • Receives files                                                            │
+│ • Generates request ID                                                      │
+└────┬────────────────────────────────────────────────────────────────────────┘
+     │
+     ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ Parser Service                                                              │
+│ • Checks Redis cache                                                        │
+│ • Parses HCL syntax                                                         │
+│ • Extracts resources: [{type: "aws_instance", attributes: {...}}]           │
+│ • Detects region from provider block                                        │
+│ • Caches result (1 hour)                                                    │
+└────┬────────────────────────────────────────────────────────────────────────┘
+     │
+     ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ API Gateway                                                                 │
+│ • Receives parsed resources                                                 │
+│ • Forwards to Cost Service                                                  │
+└────┬────────────────────────────────────────────────────────────────────────┘
+     │
+     ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ Cost Service                                                                │
+│ • Loads appropriate plugin (EC2, RDS, S3, LB)                               │
+│ • Queries AWS Pricing API (or uses fallback)                                │
+│ • Calculates monthly cost per resource                                      │
+│ • Aggregates total cost                                                     │
+│ • Returns: {total: 129.49, breakdown: [...]}                                │
+└────┬────────────────────────────────────────────────────────────────────────┘
+     │
+     ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ API Gateway                                                                 │
+│ • Saves to PostgreSQL                                                       │
+│ • Generates estimate ID                                                     │
+│ • Returns response to user                                                  │
+└────┬────────────────────────────────────────────────────────────────────────┘
+     │
+     ▼
+┌─────────┐
+│  User   │ Receives: $129.49/month, 4 resources, breakdown
+└─────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                           GITHUB BOT FLOW
+═══════════════════════════════════════════════════════════════════════════════
+
+┌──────────┐
+│Developer │ Creates PR with Terraform changes
+└────┬─────┘
+     │
+     ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ GitHub                                                                      │
+│ • Detects PR event (opened/synchronize)                                     │
+│ • Sends webhook to configured URL                                           │
+└────┬────────────────────────────────────────────────────────────────────────┘
+     │
+     ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ ngrok                                                                       │
+│ • Receives webhook on public URL                                            │
+│ • Forwards to local GitHub Bot                                              │
+└────┬────────────────────────────────────────────────────────────────────────┘
+     │
+     ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ GitHub Bot :8003                                                            │
+│ • Verifies webhook signature                                                │
+│ • Extracts PR number and repo                                               │
+│ • Fetches all .tf files from PR                                             │
+└────┬────────────────────────────────────────────────────────────────────────┘
+     │
+     ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ API Gateway → Parser → Cost Service                                         │
+│ • Processes Terraform files                                                 │
+│ • Calculates costs                                                          │
+│ • Returns estimate                                                          │
+└────┬────────────────────────────────────────────────────────────────────────┘
+     │
+     ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ GitHub Bot                                                                  │
+│ • Formats estimate as markdown table                                        │
+│ • Posts comment on PR                                                       │
+└────┬────────────────────────────────────────────────────────────────────────┘
+     │
+     ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ GitHub                                                                      │
+│ • Comment appears on PR                                                     │
+│ • Shows: Monthly cost, region, resource breakdown                           │
+└────┬────────────────────────────────────────────────────────────────────────┘
+     │
+     ▼
+┌──────────┐
+│Developer │ Sees cost estimate before merging
+└──────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                         TECHNOLOGY STACK
+═══════════════════════════════════════════════════════════════════════════════
+
+Backend Services:
+├─ API Gateway ────────── Python 3.11 + Flask
+├─ Parser Service ──────── Go 1.21
+├─ Cost Service ────────── Python 3.11 + Flask
+└─ GitHub Bot ──────────── Python 3.11 + Flask
+
+Frontend:
+├─ Web UI ──────────────── HTML5 + CSS3 + Vanilla JS
+└─ Charts ──────────────── Chart.js 4.4.0
+
+Data Storage:
+├─ Database ────────────── PostgreSQL 16
+└─ Cache ───────────────── Redis 7
+
+Infrastructure:
+├─ Containers ──────────── Docker
+├─ Orchestration ───────── Docker Compose
+└─ Tunnel ──────────────── ngrok
+
+External APIs:
+├─ Pricing ─────────────── AWS Pricing API
+└─ Integration ─────────── GitHub API
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                         DEPLOYMENT PORTS
+═══════════════════════════════════════════════════════════════════════════════
+
+Service              Port    Protocol    Purpose
+─────────────────────────────────────────────────────────────────────────────
+Web UI               3000    HTTP        User interface
+API Gateway          8000    HTTP        Main API endpoint
+Parser Service       8001    HTTP        Terraform parsing
+Cost Service         8002    HTTP        Cost calculation
+GitHub Bot           8003    HTTP        Webhook handler
+PostgreSQL           5432    TCP         Database
+Redis                6379    TCP         Cache & rate limiting
+ngrok Web UI         4040    HTTP        Tunnel dashboard
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                         KEY FEATURES
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ Core Functionality
+   • Terraform HCL parsing
+   • AWS resource cost calculation
+   • Multi-region support
+   • Cost history tracking
+   • Region auto-detection
+
+✅ User Experience
+   • Interactive web UI with charts
+   • Multi-file drag & drop upload
+   • Cost breakdown visualization
+   • CSV export
+   • Responsive design
+
+✅ Integrations
+   • GitHub PR comments
+   • Webhook handling
+   • AWS Pricing API
+   • Fallback pricing
+
+✅ Advanced Features
+   • Region comparison
+   • Cost optimization suggestions
+   • Plugin architecture
+   • Redis caching
+   • Database persistence
+
+✅ Developer Tools
+   • CLI tool
+   • REST API
+   • Health checks
+   • Comprehensive error handling
+
+
+═══════════════════════════════════════════════════════════════════════════════

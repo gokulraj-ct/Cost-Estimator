@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Kostructure - Infrastructure Governance</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, sans-serif; background: #f5f7fa; display: flex; height: 100vh; overflow: hidden; }
+        
+        .sidebar { width: 260px; background: #2c3e50; color: white; display: flex; flex-direction: column; }
+        .sidebar-header { padding: 20px; background: #1a252f; }
+        .sidebar-header h1 { font-size: 24px; margin-bottom: 5px; }
+        .sidebar-header p { font-size: 12px; opacity: 0.7; }
+        .sidebar-menu { flex: 1; overflow-y: auto; padding: 10px 0; }
+        
+        .menu-item { padding: 12px 20px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: space-between; }
+        .menu-item:hover { background: rgba(255,255,255,0.1); }
+        .menu-item.active { background: #667eea; }
+        
+        .submenu { max-height: 0; overflow: hidden; transition: max-height 0.3s; background: rgba(0,0,0,0.2); }
+        .submenu.open { max-height: 200px; }
+        .submenu-item { padding: 10px 20px 10px 50px; cursor: pointer; font-size: 14px; transition: all 0.2s; }
+        .submenu-item:hover { background: rgba(255,255,255,0.1); }
+        
+        .main-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        .topbar { background: white; padding: 15px 30px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; }
+        .topbar h2 { font-size: 24px; color: #2c3e50; }
+        .history-btn { padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+        .history-btn:hover { background: #5568d3; }
+        
+        .content-area { flex: 1; overflow-y: auto; padding: 30px; }
+        .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        
+        .pr-card { padding: 20px; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 15px; }
+        .pr-header { display: flex; justify-content: space-between; align-items: start; margin-bottom: 15px; }
+        .pr-title { font-weight: 600; font-size: 18px; margin-bottom: 5px; }
+        .pr-meta { color: #7f8c8d; font-size: 14px; }
+        .pr-cost { font-size: 24px; font-weight: 700; color: #667eea; }
+        .pr-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+        .stat-box { padding: 10px; background: #f5f7fa; border-radius: 4px; }
+        .stat-label { font-size: 12px; color: #666; }
+        .stat-value { font-size: 16px; font-weight: 600; }
+        
+        .violations-box { margin-top: 15px; padding: 15px; background: #fff3cd; border-radius: 4px; border-left: 4px solid #ffc107; }
+        .violation-item { padding: 8px; background: white; border-radius: 4px; margin-bottom: 8px; font-size: 14px; }
+        .badge { padding: 2px 8px; border-radius: 8px; font-size: 11px; font-weight: 500; margin-right: 8px; }
+        
+        .policy-card { padding: 20px; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 15px; }
+        .toggle { position: relative; display: inline-block; width: 50px; height: 24px; }
+        .toggle input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 24px; }
+        .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: #2196F3; }
+        input:checked + .slider:before { transform: translateX(26px); }
+        
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; }
+        .modal.show { display: flex; }
+        .modal-content { background: white; border-radius: 12px; padding: 30px; max-width: 800px; width: 90%; max-height: 80vh; overflow-y: auto; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .close-btn { background: none; border: none; font-size: 24px; cursor: pointer; color: #666; }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <h1>Kostructure</h1>
+            <p>Infrastructure Governance</p>
+        </div>
+        <div class="sidebar-menu">
+            <div class="menu-item active" onclick="navigateTo('integrations')">
+                <span>🔗 Integrations</span>
+            </div>
+            
+            <div class="menu-item" onclick="toggleSubmenu('cost-estimation')">
+                <span>💰 Cost Estimation</span>
+                <span id="arrow-cost-estimation">▼</span>
+            </div>
+            <div class="submenu" id="submenu-cost-estimation">
+                <div class="submenu-item" onclick="navigateTo('cost-estimate')">Cost Estimate</div>
+                <div class="submenu-item" onclick="navigateTo('region-comparison')">Region Comparison</div>
+                <div class="submenu-item" onclick="navigateTo('optimization')">Optimization</div>
+            </div>
+            
+            <div class="menu-item" onclick="navigateTo('policies')">
+                <span>🔒 Policies</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div class="topbar">
+            <h2 id="page-title">Integrations</h2>
+            <button class="history-btn" onclick="showHistory()">
+                <span>🕐</span>
+                <span>History</span>
+            </button>
+        </div>
+        
+        <div class="content-area">
+            <div id="page-integrations">
+                <div class="card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <div>
+                            <h3>GitHub Integrations</h3>
+                            <p style="color: #666; margin-top: 5px;">Connect your repositories to track infrastructure costs and PR estimates</p>
+                        </div>
+                        <button class="history-btn" onclick="showAddIntegration()">+ Add Integration</button>
+                    </div>
+                    <div id="integrations-list"></div>
+                </div>
+            </div>
+
+            <div id="page-pr-estimates" style="display: none;">
+                <div class="card">
+                    <p style="color: #666; margin-bottom: 20px;">View cost estimates and policy violations from GitHub PRs</p>
+                    <button class="history-btn" onclick="loadPREstimates()" style="margin-bottom: 20px;">Refresh</button>
+                    <div id="pr-estimates-list"></div>
+                </div>
+            </div>
+
+            <div id="page-policies" style="display: none;">
+                <div class="card">
+                    <p style="color: #666; margin-bottom: 20px;">Control which policies are enforced in PR reviews</p>
+                    <div id="policies-list"></div>
+                </div>
+            </div>
+
+            <div id="page-cost-estimate" style="display: none;">
+                <div class="card">
+                    <h3>Cost Estimation</h3>
+                    <p style="color: #666;">Upload Terraform files or paste code (Coming soon)</p>
+                </div>
+            </div>
+
+            <div id="page-region-comparison" style="display: none;">
+                <div class="card">
+                    <h3>Region Comparison</h3>
+                    <p style="color: #666;">Compare costs across AWS regions (Coming soon)</p>
+                </div>
+            </div>
+
+            <div id="page-optimization" style="display: none;">
+                <div class="card">
+                    <h3>Cost Optimization</h3>
+                    <p style="color: #666;">Get cost-saving recommendations (Coming soon)</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="history-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Estimate History</h2>
+                <button class="close-btn" onclick="closeHistory()">&times;</button>
+            </div>
+            <div id="history-list"></div>
+        </div>
+    </div>
+
+    <div class="modal" id="add-integration-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Add GitHub Integration</h2>
+                <button class="close-btn" onclick="closeAddIntegration()">&times;</button>
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Repository URL</label>
+                <input type="text" id="repo-url" placeholder="https://github.com/username/repo" style="width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px;">
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 600;">GitHub Token (Required for private repos)</label>
+                <input type="password" id="github-token" placeholder="ghp_xxxxxxxxxxxx" style="width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px;">
+                <p style="font-size: 12px; color: #7f8c8d; margin-top: 5px;">
+                    <a href="https://github.com/settings/tokens/new?scopes=repo" target="_blank" style="color: #667eea;">Create a token</a> with 'repo' scope
+                </p>
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Description (Optional)</label>
+                <input type="text" id="repo-desc" placeholder="Production infrastructure" style="width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px;">
+            </div>
+            <button class="history-btn" onclick="saveIntegration()">Save Integration</button>
+        </div>
+    </div>
+
+    <div class="modal" id="resources-modal">
+        <div class="modal-content" style="max-width: 900px;">
+            <div class="modal-header">
+                <h2 id="resources-title">Resources</h2>
+                <button class="close-btn" onclick="closeResources()">&times;</button>
+            </div>
+            <div id="resources-list"></div>
+        </div>
+    </div>
+
+    <script>
+        function toggleSubmenu(id) {
+            const submenu = document.getElementById('submenu-' + id);
+            const arrow = document.getElementById('arrow-' + id);
+            submenu.classList.toggle('open');
+            arrow.textContent = submenu.classList.contains('open') ? '▲' : '▼';
+        }
+
+        function navigateTo(page) {
+            document.querySelectorAll('[id^="page-"]').forEach(p => p.style.display = 'none');
+            document.querySelectorAll('.menu-item').forEach(m => m.classList.remove('active'));
+            
+            document.getElementById('page-' + page).style.display = 'block';
+            
+            const titles = {
+                'integrations': 'Integrations',
+                'pr-estimates': 'Pull Request Estimates',
+                'policies': 'Policy Management',
+                'cost-estimate': 'Cost Estimation',
+                'region-comparison': 'Region Comparison',
+                'optimization': 'Cost Optimization'
+            };
+            document.getElementById('page-title').textContent = titles[page];
+            
+            if (page === 'integrations') loadIntegrations();
+            if (page === 'pr-estimates') loadPREstimates();
+            if (page === 'policies') loadPolicies();
+        }
+
+        function showAddIntegration() {
+            document.getElementById('add-integration-modal').classList.add('show');
+        }
+
+        function closeAddIntegration() {
+            document.getElementById('add-integration-modal').classList.remove('show');
+            document.getElementById('repo-url').value = '';
+            document.getElementById('github-token').value = '';
+            document.getElementById('repo-desc').value = '';
+        }
+
+        function saveIntegration() {
+            const url = document.getElementById('repo-url').value;
+            const token = document.getElementById('github-token').value;
+            
+            if (!url) {
+                alert('Please enter a repository URL');
+                return;
+            }
+
+            const match = url.match(/github\.com\/([^\/]+\/[^\/]+)/);
+            if (!match) {
+                alert('Invalid GitHub URL');
+                return;
+            }
+
+            const repoFullName = match[1].replace('.git', '');
+            const desc = document.getElementById('repo-desc').value;
+
+            // Save to backend
+            fetch('http://localhost:8000/api/v1/integrations', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    repo: repoFullName,
+                    token: token || null,
+                    region: 'us-east-1',
+                    description: desc
+                })
+            })
+            .then(res => {
+                if (res.status === 409) {
+                    alert('Repository already integrated');
+                    return null;
+                }
+                if (!res.ok) throw new Error('Failed to save integration');
+                return res.json();
+            })
+            .then(data => {
+                if (data) {
+                    closeAddIntegration();
+                    loadIntegrations();
+                }
+            })
+            .catch(err => {
+                alert('Error: ' + err.message);
+            });
+        }
+
+        async function loadIntegrations() {
+            const div = document.getElementById('integrations-list');
+            div.innerHTML = '<p>Loading...</p>';
+
+            try {
+                // Load from backend
+                const intRes = await fetch('http://localhost:8000/api/v1/integrations');
+                const intData = await intRes.json();
+                const integrations = intData.integrations || [];
+
+                if (integrations.length === 0) {
+                    div.innerHTML = '<p style="text-align: center; padding: 40px; color: #7f8c8d;">No integrations yet. Click "+ Add Integration" to connect a repository.</p>';
+                    return;
+                }
+
+                const res = await fetch('http://localhost:8000/api/v1/pr-estimates');
+                const data = await res.json();
+
+                let html = '';
+                for (const integration of integrations) {
+                    const repoPRs = data.estimates.filter(e => e.repo === integration.repo);
+                    const totalCost = repoPRs.length > 0 ? repoPRs[0].total_cost : 0;
+
+                    html += `
+                        <div class="pr-card" style="border-left: 4px solid #667eea;">
+                            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 15px;">
+                                <div style="flex: 1;">
+                                    <div style="font-weight: 600; font-size: 18px; margin-bottom: 5px;">
+                                        <a href="https://github.com/${integration.repo}" target="_blank" style="color: #667eea; text-decoration: none;">${integration.repo}</a>
+                                    </div>
+                                    <div style="color: #7f8c8d; font-size: 14px;">${integration.description || 'No description'}</div>
+                                </div>
+                                <div style="display: flex; gap: 8px;">
+                                    <button onclick="showResources('${integration.repo}')" style="background: #667eea; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer;">Resources</button>
+                                    <button onclick="removeIntegration('${integration.repo}')" style="background: #e74c3c; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer;">Remove</button>
+                                </div>
+                            </div>
+                            
+                            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 15px;">
+                                <div class="stat-box">
+                                    <div class="stat-label">Current Cost</div>
+                                    <div class="stat-value">$${totalCost.toFixed(2)}/mo</div>
+                                </div>
+                                <div class="stat-box">
+                                    <div class="stat-label">Open PRs</div>
+                                    <div class="stat-value">${repoPRs.length}</div>
+                                </div>
+                                <div class="stat-box">
+                                    <div class="stat-label">Region</div>
+                                    <div class="stat-value">${integration.default_region}</div>
+                                </div>
+                            </div>
+
+                            ${repoPRs.length > 0 ? `
+                                <div style="border-top: 1px solid #e0e0e0; padding-top: 15px;">
+                                    <div style="font-weight: 600; margin-bottom: 10px;">Recent Pull Requests</div>
+                                    ${repoPRs.slice(0, 3).map(pr => {
+                                        const utcDate = new Date(pr.created_at);
+                                        const istDate = new Date(utcDate.getTime() + (5.5 * 60 * 60 * 1000));
+                                        const date = istDate.toLocaleString('en-IN', { 
+                                            month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true 
+                                        });
+                                        const violations = pr.policy_violations?.violation_count || 0;
+                                        return `
+                                            <div style="padding: 10px; background: #f5f7fa; border-radius: 6px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+                                                <div>
+                                                    <a href="${pr.pr_url}" target="_blank" style="color: #667eea; text-decoration: none; font-weight: 500;">#${pr.pr_number} ${pr.pr_title}</a>
+                                                    <div style="font-size: 12px; color: #7f8c8d;">${date} ${violations > 0 ? `• ⚠️ ${violations} violations` : ''}</div>
+                                                </div>
+                                                <div style="font-weight: 600; color: #667eea;">$${pr.total_cost.toFixed(2)}</div>
+                                            </div>
+                                        `;
+                                    }).join('')}
+                                </div>
+                            ` : '<p style="color: #7f8c8d; font-size: 14px; margin-top: 10px;">No pull requests yet</p>'}
+                        </div>
+                    `;
+                }
+                div.innerHTML = html;
+            } catch (e) {
+                div.innerHTML = `<div style="color: #e74c3c;">Error loading integrations: ${e.message}</div>`;
+            }
+        }
+
+        function removeIntegration(repo) {
+            if (!confirm(`Remove integration for ${repo}?`)) return;
+            
+            fetch(`http://localhost:8000/api/v1/integrations/${encodeURIComponent(repo)}`, {
+                method: 'DELETE'
+            })
+            .then(res => {
+                if (!res.ok) throw new Error('Failed to delete');
+                loadIntegrations();
+            })
+            .catch(err => {
+                alert('Error: ' + err.message);
+            });
+        }
+
+        async function showResources(repo) {
+            document.getElementById('resources-modal').classList.add('show');
+            document.getElementById('resources-title').textContent = `Resources - ${repo}`;
+            
+            const div = document.getElementById('resources-list');
+            div.innerHTML = '<p>Loading resources...</p>';
+
+            try {
+                // Get PR estimates for this repo
+                const prRes = await fetch('http://localhost:8000/api/v1/pr-estimates');
+                const prData = await prRes.json();
+                
+                const repoPRs = prData.estimates.filter(e => e.repo === repo);
+                
+                if (repoPRs.length === 0) {
+                    div.innerHTML = '<p style="text-align: center; padding: 40px; color: #7f8c8d;">No resources found. Create a PR to see resource costs.</p>';
+                    return;
+                }
+
+                // Get all estimates to find the latest one for this repo
+                const estRes = await fetch('http://localhost:8000/api/v1/estimates');
+                const estData = await estRes.json();
+                
+                // Get the most recent estimate
+                const latestEstimate = estData.estimates[0];
+                
+                if (!latestEstimate) {
+                    div.innerHTML = '<p style="text-align: center; padding: 40px; color: #7f8c8d;">No estimate data available.</p>';
+                    return;
+                }
+
+                // Fetch detailed breakdown
+                const detailRes = await fetch(`http://localhost:8000/api/v1/estimates/${latestEstimate.estimate_id}`);
+                const detailData = await detailRes.json();
+                
+                const resources = detailData.breakdown || [];
+
+                if (resources.length === 0) {
+                    div.innerHTML = '<p style="text-align: center; padding: 40px; color: #7f8c8d;">No resources found.</p>';
+                    return;
+                }
+
+                const totalCost = detailData.total_monthly_cost || 0;
+
+                let html = `
+                    <div style="margin-bottom: 20px; padding: 15px; background: #f5f7fa; border-radius: 8px;">
+                        <div style="font-size: 14px; color: #666; margin-bottom: 5px;">Total Monthly Cost</div>
+                        <div style="font-size: 32px; font-weight: 700; color: #667eea;">$${totalCost.toFixed(2)}</div>
+                        <div style="font-size: 14px; color: #666; margin-top: 5px;">${resources.length} resources</div>
+                    </div>
+                    <div style="max-height: 400px; overflow-y: auto;">
+                `;
+
+                resources.forEach(resource => {
+                    const cost = resource.monthly_cost || 0;
+                    const percentage = totalCost > 0 ? (cost / totalCost * 100).toFixed(1) : 0;
+                    
+                    html += `
+                        <div style="padding: 15px; background: white; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid #667eea;">
+                            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
+                                <div style="flex: 1;">
+                                    <div style="font-weight: 600; font-size: 16px; margin-bottom: 5px;">${resource.resource}</div>
+                                    <div style="color: #7f8c8d; font-size: 14px;">${resource.type}</div>
+                                </div>
+                                <div style="text-align: right;">
+                                    <div style="font-size: 20px; font-weight: 700; color: #667eea;">$${cost.toFixed(2)}/mo</div>
+                                    <div style="font-size: 12px; color: #7f8c8d;">${percentage}% of total</div>
+                                </div>
+                            </div>
+                            ${resource.details ? `
+                                <div style="padding: 10px; background: #f5f7fa; border-radius: 4px; font-size: 13px;">
+                                    ${Object.entries(resource.details).map(([key, value]) => 
+                                        `<div style="margin-bottom: 5px;"><strong>${key}:</strong> ${value}</div>`
+                                    ).join('')}
+                                </div>
+                            ` : ''}
+                        </div>
+                    `;
+                });
+
+                html += '</div>';
+                div.innerHTML = html;
+            } catch (e) {
+                div.innerHTML = `<div style="color: #e74c3c;">Error loading resources: ${e.message}</div>`;
+            }
+        }
+
+        function closeResources() {
+            document.getElementById('resources-modal').classList.remove('show');
+        }
+
+        function showHistory() {
+            document.getElementById('history-modal').classList.add('show');
+            loadHistory();
+        }
+
+        function closeHistory() {
+            document.getElementById('history-modal').classList.remove('show');
+        }
+
+        async function loadPREstimates() {
+            const div = document.getElementById('pr-estimates-list');
+            div.innerHTML = '<p>Loading...</p>';
+
+            try {
+                const res = await fetch('http://localhost:8000/api/v1/pr-estimates');
+                const data = await res.json();
+
+                if (data.estimates.length === 0) {
+                    div.innerHTML = '<p style="text-align: center; padding: 40px; color: #7f8c8d;">No PR estimates yet</p>';
+                    return;
+                }
+
+                let html = '';
+                data.estimates.forEach((est, idx) => {
+                    const violations = est.policy_violations?.violations || [];
+                    const violationCount = est.policy_violations?.violation_count || 0;
+                    
+                    const utcDate = new Date(est.created_at);
+                    const istDate = new Date(utcDate.getTime() + (5.5 * 60 * 60 * 1000));
+                    const formattedDate = istDate.toLocaleString('en-IN', { 
+                        month: 'short', day: 'numeric', year: 'numeric', 
+                        hour: '2-digit', minute: '2-digit', hour12: true 
+                    });
+                    
+                    let violationsHtml = '';
+                    if (violationCount > 0) {
+                        const showAll = violations.length <= 5;
+                        const displayViolations = showAll ? violations : violations.slice(0, 3);
+                        
+                        violationsHtml = `
+                            <div class="violations-box">
+                                <div style="font-weight: 600; margin-bottom: 10px; color: #856404;">⚠️ ${violationCount} Policy Violation${violationCount > 1 ? 's' : ''}</div>
+                                <div id="violations-${idx}">
+                                    ${displayViolations.map(v => `
+                                        <div class="violation-item">
+                                            <span class="badge" style="background: ${v.severity === 'critical' ? '#fee' : v.severity === 'high' ? '#ffeaa7' : '#fff3cd'}; color: ${v.severity === 'critical' ? '#c00' : v.severity === 'high' ? '#d63031' : '#856404'};">${v.severity}</span>
+                                            <strong>${v.policy_name}</strong> - ${v.resource}
+                                        </div>
+                                    `).join('')}
+                                </div>
+                                ${!showAll ? `
+                                    <div id="more-violations-${idx}" style="display: none;">
+                                        ${violations.slice(3).map(v => `
+                                            <div class="violation-item">
+                                                <span class="badge" style="background: ${v.severity === 'critical' ? '#fee' : v.severity === 'high' ? '#ffeaa7' : '#fff3cd'}; color: ${v.severity === 'critical' ? '#c00' : v.severity === 'high' ? '#d63031' : '#856404'};">${v.severity}</span>
+                                                <strong>${v.policy_name}</strong> - ${v.resource}
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                    <button onclick="toggleViolations(${idx})" id="toggle-btn-${idx}" style="background: none; border: none; color: #667eea; cursor: pointer; font-weight: 600; padding: 4px 0; margin-top: 8px;">
+                                        + Show ${violations.length - 3} more
+                                    </button>
+                                ` : ''}
+                            </div>
+                        `;
+                    }
+                    
+                    html += `
+                        <div class="pr-card">
+                            <div class="pr-header">
+                                <div style="flex: 1;">
+                                    <div class="pr-title">
+                                        <a href="${est.pr_url}" target="_blank" style="color: #667eea; text-decoration: none;">${est.pr_title || `PR #${est.pr_number}`}</a>
+                                    </div>
+                                    <div class="pr-meta">${est.repo} #${est.pr_number} • ${formattedDate}</div>
+                                </div>
+                                <div class="pr-cost">$${est.total_cost.toFixed(2)}/mo</div>
+                            </div>
+                            <div class="pr-stats">
+                                <div class="stat-box">
+                                    <div class="stat-label">Region</div>
+                                    <div class="stat-value">${est.region}</div>
+                                </div>
+                                <div class="stat-box">
+                                    <div class="stat-label">Resources</div>
+                                    <div class="stat-value">${est.resource_count}</div>
+                                </div>
+                                <div class="stat-box">
+                                    <div class="stat-label">Currency</div>
+                                    <div class="stat-value">${est.currency}</div>
+                                </div>
+                            </div>
+                            ${violationsHtml}
+                        </div>
+                    `;
+                });
+                div.innerHTML = html;
+            } catch (e) {
+                div.innerHTML = `<div style="color: #e74c3c;">Error: ${e.message}</div>`;
+            }
+        }
+
+        function toggleViolations(idx) {
+            const moreDiv = document.getElementById(`more-violations-${idx}`);
+            const btn = document.getElementById(`toggle-btn-${idx}`);
+            
+            if (moreDiv.style.display === 'none') {
+                moreDiv.style.display = 'block';
+                btn.textContent = '- Show less';
+            } else {
+                moreDiv.style.display = 'none';
+                const count = moreDiv.children.length;
+                btn.textContent = `+ Show ${count} more`;
+            }
+        }
+
+        async function loadPolicies() {
+            const div = document.getElementById('policies-list');
+            div.innerHTML = '<p>Loading...</p>';
+
+            try {
+                const res = await fetch('http://localhost:8000/api/v1/policies');
+                const data = await res.json();
+
+                let html = '';
+                data.policies.forEach(policy => {
+                    const colors = { critical: '#c0392b', high: '#e67e22', medium: '#f39c12', low: '#3498db' };
+                    const color = colors[policy.severity] || '#95a5a6';
+                    
+                    html += `
+                        <div class="policy-card" style="border-left: 4px solid ${color};">
+                            <div style="display: flex; justify-content: space-between; align-items: start;">
+                                <div style="flex: 1;">
+                                    <div style="font-weight: 600; font-size: 16px; margin-bottom: 5px;">${policy.name}</div>
+                                    <div style="color: #666; font-size: 14px; margin-bottom: 10px;">${policy.description || ''}</div>
+                                    <div>
+                                        <span class="badge" style="background: ${color}; color: white;">${policy.severity.toUpperCase()}</span>
+                                        <span class="badge" style="background: #e3f2fd; color: #1976d2;">${policy.category}</span>
+                                        <span class="badge" style="background: #f3e5f5; color: #7b1fa2;">${policy.resource_type}</span>
+                                    </div>
+                                </div>
+                                <label class="toggle">
+                                    <input type="checkbox" ${policy.enabled ? 'checked' : ''} onchange="togglePolicy('${policy.id}', this.checked)">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                    `;
+                });
+                div.innerHTML = html;
+            } catch (e) {
+                div.innerHTML = `<div style="color: #e74c3c;">Error: ${e.message}</div>`;
+            }
+        }
+
+        async function togglePolicy(policyId, enabled) {
+            try {
+                await fetch(`http://localhost:8000/api/v1/policies/${policyId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled })
+                });
+            } catch (e) {
+                alert('Failed to update policy');
+            }
+        }
+
+        async function loadHistory() {
+            const div = document.getElementById('history-list');
+            div.innerHTML = '<p>Loading...</p>';
+
+            try {
+                const res = await fetch('http://localhost:8000/api/v1/estimates');
+                const data = await res.json();
+
+                if (data.estimates.length === 0) {
+                    div.innerHTML = '<p style="text-align: center; padding: 40px; color: #7f8c8d;">No estimates yet</p>';
+                    return;
+                }
+
+                let html = '';
+                data.estimates.forEach(est => {
+                    const utcDate = new Date(est.created_at);
+                    const istDate = new Date(utcDate.getTime() + (5.5 * 60 * 60 * 1000));
+                    const date = istDate.toLocaleString('en-IN', { 
+                        month: 'short', day: 'numeric', year: 'numeric', 
+                        hour: '2-digit', minute: '2-digit', hour12: true 
+                    });
+                    html += `
+                        <div style="padding: 15px; background: #f5f7fa; border-radius: 8px; margin: 10px 0;">
+                            <div style="font-weight: 600; font-size: 18px;">$${est.total_monthly_cost.toFixed(2)}/month</div>
+                            <div style="color: #7f8c8d; font-size: 14px;">${date} • ${est.region} • ${est.resource_count} resources</div>
+                        </div>
+                    `;
+                });
+                div.innerHTML = html;
+            } catch (e) {
+                div.innerHTML = `<div style="color: #e74c3c;">Error: ${e.message}</div>`;
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            loadIntegrations();
+        });
+    </script>
+</body>
+</html>

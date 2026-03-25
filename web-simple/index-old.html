@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kostructure - AWS Cost Estimator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50">
+    <div class="min-h-screen py-12 px-4">
+        <div class="max-w-4xl mx-auto">
+            <header class="text-center mb-12">
+                <h1 class="text-4xl font-bold text-gray-900 mb-2">Kostructure</h1>
+                <p class="text-gray-600">AWS Infrastructure Cost Estimator</p>
+            </header>
+
+            <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+                <h2 class="text-xl font-semibold mb-4">Upload Terraform Files</h2>
+                
+                <input type="file" id="fileInput" multiple accept=".tf" 
+                    class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 mb-4">
+
+                <div id="fileList" class="mb-4 text-sm text-gray-600"></div>
+
+                <button id="estimateBtn" onclick="estimateCost()" 
+                    class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed">
+                    Estimate Cost
+                </button>
+
+                <div id="error" class="mt-4 p-4 bg-red-50 text-red-700 rounded-md hidden"></div>
+                <div id="loading" class="mt-4 text-center text-gray-600 hidden">
+                    <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                    <p class="mt-2">Calculating costs...</p>
+                </div>
+            </div>
+
+            <div id="results" class="bg-white rounded-lg shadow-md p-6 hidden">
+                <h2 class="text-2xl font-bold mb-4">Cost Estimate</h2>
+                
+                <div class="bg-blue-50 p-6 rounded-lg mb-6">
+                    <div class="text-3xl font-bold text-blue-900">
+                        $<span id="totalCost">0.00</span>
+                        <span class="text-lg font-normal text-gray-600">/month</span>
+                    </div>
+                    <div class="text-sm text-gray-600 mt-2">
+                        Region: <span id="region">us-east-1</span> | 
+                        Resources: <span id="resourceCount">0</span>
+                    </div>
+                    <div class="text-xs text-gray-500 mt-1">
+                        Estimate ID: <span id="estimateId">-</span>
+                    </div>
+                </div>
+
+                <h3 class="text-lg font-semibold mb-3">Cost Breakdown</h3>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Resource</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Monthly Cost</th>
+                            </tr>
+                        </thead>
+                        <tbody id="breakdown" class="bg-white divide-y divide-gray-200"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8000';
+        let selectedFiles = [];
+
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            selectedFiles = Array.from(e.target.files);
+            document.getElementById('fileList').textContent = 
+                `${selectedFiles.length} file(s) selected: ${selectedFiles.map(f => f.name).join(', ')}`;
+            document.getElementById('estimateBtn').disabled = selectedFiles.length === 0;
+        });
+
+        async function estimateCost() {
+            const errorDiv = document.getElementById('error');
+            const loadingDiv = document.getElementById('loading');
+            const resultsDiv = document.getElementById('results');
+            
+            errorDiv.classList.add('hidden');
+            resultsDiv.classList.add('hidden');
+            loadingDiv.classList.remove('hidden');
+
+            try {
+                const files = await Promise.all(
+                    selectedFiles.map(async file => ({
+                        name: file.name,
+                        content: await file.text()
+                    }))
+                );
+
+                const response = await fetch(`${API_URL}/api/v1/estimate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ files, region: 'us-east-1' })
+                });
+
+                const data = await response.json();
+
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                // Display results
+                document.getElementById('totalCost').textContent = data.total_monthly_cost.toFixed(2);
+                document.getElementById('region').textContent = data.region;
+                document.getElementById('resourceCount').textContent = data.resource_count;
+                document.getElementById('estimateId').textContent = data.estimate_id;
+
+                const breakdownHtml = data.breakdown.map(item => `
+                    <tr>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${item.resource}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${item.type}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">$${item.monthly_cost.toFixed(2)}</td>
+                    </tr>
+                `).join('');
+
+                document.getElementById('breakdown').innerHTML = breakdownHtml;
+                resultsDiv.classList.remove('hidden');
+
+            } catch (error) {
+                errorDiv.textContent = `Error: ${error.message}`;
+                errorDiv.classList.remove('hidden');
+            } finally {
+                loadingDiv.classList.add('hidden');
+            }
+        }
+    </script>
+</body>
+</html>

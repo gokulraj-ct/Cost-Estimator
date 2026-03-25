@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Kostructure - AWS Cost Estimator</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, sans-serif; background: #f5f7fa; display: flex; height: 100vh; overflow: hidden; }
+        
+        /* Sidebar */
+        .sidebar { width: 260px; background: #2c3e50; color: white; display: flex; flex-direction: column; }
+        .sidebar-header { padding: 20px; background: #1a252f; }
+        .sidebar-header h1 { font-size: 24px; margin-bottom: 5px; }
+        .sidebar-header p { font-size: 12px; opacity: 0.7; }
+        .sidebar-menu { flex: 1; overflow-y: auto; padding: 10px 0; }
+        
+        .menu-item { padding: 12px 20px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: space-between; }
+        .menu-item:hover { background: rgba(255,255,255,0.1); }
+        .menu-item.active { background: #667eea; }
+        .menu-item-icon { margin-right: 10px; }
+        .menu-item-arrow { transition: transform 0.2s; }
+        .menu-item-arrow.open { transform: rotate(180deg); }
+        
+        .submenu { max-height: 0; overflow: hidden; transition: max-height 0.3s; background: rgba(0,0,0,0.2); }
+        .submenu.open { max-height: 200px; }
+        .submenu-item { padding: 10px 20px 10px 50px; cursor: pointer; font-size: 14px; transition: all 0.2s; }
+        .submenu-item:hover { background: rgba(255,255,255,0.1); }
+        .submenu-item.active { background: #667eea; }
+        
+        /* Main Content */
+        .main-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        .topbar { background: white; padding: 15px 30px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; }
+        .topbar h2 { font-size: 24px; color: #2c3e50; }
+        .history-btn { padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+        .history-btn:hover { background: #5568d3; }
+        
+        .content-area { flex: 1; overflow-y: auto; padding: 30px; }
+        .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        
+        /* Policy Card */
+        .policy-card { padding: 20px; background: white; border-radius: 8px; border-left: 4px solid #667eea; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 15px; }
+        .policy-header { display: flex; justify-content: space-between; align-items: start; }
+        .policy-name { font-weight: 600; font-size: 16px; margin-bottom: 5px; }
+        .policy-desc { color: #666; font-size: 14px; margin-bottom: 10px; }
+        .badge { padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 500; display: inline-block; margin-right: 8px; }
+        
+        /* Toggle Switch */
+        .toggle { position: relative; display: inline-block; width: 50px; height: 24px; }
+        .toggle input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 24px; }
+        .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: #2196F3; }
+        input:checked + .slider:before { transform: translateX(26px); }
+        
+        /* PR Card */
+        .pr-card { padding: 20px; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 15px; }
+        .pr-header { display: flex; justify-content: space-between; align-items: start; margin-bottom: 15px; }
+        .pr-title { font-weight: 600; font-size: 18px; margin-bottom: 5px; }
+        .pr-meta { color: #7f8c8d; font-size: 14px; }
+        .pr-cost { font-size: 24px; font-weight: 700; color: #667eea; }
+        .pr-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+        .stat-box { padding: 10px; background: #f5f7fa; border-radius: 4px; }
+        .stat-label { font-size: 12px; color: #666; }
+        .stat-value { font-size: 16px; font-weight: 600; }
+        
+        .violations-box { margin-top: 15px; padding: 15px; background: #fff3cd; border-radius: 4px; border-left: 4px solid #ffc107; }
+        .violation-item { padding: 8px; background: white; border-radius: 4px; margin-bottom: 8px; font-size: 14px; }
+        
+        /* History Modal */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; }
+        .modal.show { display: flex; align-items: center; justify-content: center; }
+        .modal-content { background: white; border-radius: 12px; padding: 30px; max-width: 800px; width: 90%; max-height: 80vh; overflow-y: auto; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .close-btn { background: none; border: none; font-size: 24px; cursor: pointer; color: #666; }
+    </style>
+</head>
+<body>
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <h1>Kostructure</h1>
+            <p>Infrastructure Governance</p>
+        </div>
+        <div class="sidebar-menu">
+            <div class="menu-item" onclick="toggleSubmenu('cost-estimation')">
+                <span><span class="menu-item-icon">💰</span>Cost Estimation</span>
+                <span class="menu-item-arrow" id="arrow-cost-estimation">▼</span>
+            </div>
+            <div class="submenu" id="submenu-cost-estimation">
+                <div class="submenu-item" onclick="navigateTo('cost-estimate')">Cost Estimate</div>
+                <div class="submenu-item" onclick="navigateTo('region-comparison')">Region Comparison</div>
+                <div class="submenu-item" onclick="navigateTo('optimization')">Optimization</div>
+            </div>
+            
+            <div class="menu-item active" onclick="navigateTo('pr-estimates')">
+                <span><span class="menu-item-icon">📊</span>PR Estimates</span>
+            </div>
+            
+            <div class="menu-item" onclick="navigateTo('policies')">
+                <span><span class="menu-item-icon">🔒</span>Policies</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <div class="topbar">
+            <h2 id="page-title">Pull Request Estimates</h2>
+            <button class="history-btn" onclick="showHistory()">
+                <span>🕐</span>
+                <span>History</span>
+            </button>
+        </div>
+        
+        <div class="content-area">
+            <!-- PR Estimates Page (Default) -->
+            <div id="page-pr-estimates">
+                <div class="card">
+                    <p style="color: #666; margin-bottom: 20px;">View cost estimates and policy violations from GitHub PRs</p>
+                    <button class="history-btn" onclick="loadPREstimates()" style="margin-bottom: 20px;">Refresh</button>
+                    <div id="pr-estimates-list"></div>
+                </div>
+            </div>
+
+            <!-- Policies Page -->
+            <div id="page-policies" style="display: none;">
+                <div class="card">
+                    <p style="color: #666; margin-bottom: 20px;">Control which policies are enforced in PR reviews</p>
+                    <div id="policies-list"></div>
+                </div>
+            </div>
+
+            <!-- Cost Estimate Page -->
+            <div id="page-cost-estimate" style="display: none;">
+                <div class="card">
+                    <h3>Upload Terraform Files</h3>
+                    <div style="border: 2px dashed #e0e0e0; border-radius: 8px; padding: 40px; text-align: center; cursor: pointer; margin: 20px 0;" onclick="document.getElementById('file-input').click()">
+                        <p>📁 Click or drag files here</p>
+                        <input type="file" id="file-input" multiple accept=".tf" style="display: none;">
+                    </div>
+                    <h4>Or paste Terraform code:</h4>
+                    <textarea id="tf-code" placeholder='resource "aws_instance" "web" { instance_type = "t3.medium" }' style="width: 100%; min-height: 200px; padding: 15px; border: 2px solid #e0e0e0; border-radius: 8px; font-family: monospace;"></textarea>
+                    <button class="history-btn" style="margin-top: 15px;">Calculate Cost</button>
+                </div>
+            </div>
+
+            <!-- Region Comparison Page -->
+            <div id="page-region-comparison" style="display: none;">
+                <div class="card">
+                    <h3>Region Comparison</h3>
+                    <p style="color: #666;">Compare costs across AWS regions (Coming soon)</p>
+                </div>
+            </div>
+
+            <!-- Optimization Page -->
+            <div id="page-optimization" style="display: none;">
+                <div class="card">
+                    <h3>Cost Optimization</h3>
+                    <p style="color: #666;">Get cost-saving recommendations (Coming soon)</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- History Modal -->
+    <div class="modal" id="history-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Estimate History</h2>
+                <button class="close-btn" onclick="closeHistory()">&times;</button>
+            </div>
+            <div id="history-list"></div>
+        </div>
+    </div>
+
+    <script>
+        let currentPage = 'pr-estimates';
+
+        function toggleSubmenu(id) {
+            const submenu = document.getElementById('submenu-' + id);
+            const arrow = document.getElementById('arrow-' + id);
+            submenu.classList.toggle('open');
+            arrow.classList.toggle('open');
+        }
+
+        function navigateTo(page) {
+            // Hide all pages
+            document.querySelectorAll('[id^="page-"]').forEach(p => p.style.display = 'none');
+            
+            // Remove active from all menu items
+            document.querySelectorAll('.menu-item, .submenu-item').forEach(m => m.classList.remove('active'));
+            
+            // Show selected page
+            document.getElementById('page-' + page).style.display = 'block';
+            currentPage = page;
+            
+            // Update title
+            const titles = {
+                'pr-estimates': 'Pull Request Estimates',
+                'policies': 'Policy Management',
+                'cost-estimate': 'Cost Estimation',
+                'region-comparison': 'Region Comparison',
+                'optimization': 'Cost Optimization'
+            };
+            document.getElementById('page-title').textContent = titles[page];
+            
+            // Load data
+            if (page === 'pr-estimates') loadPREstimates();
+            if (page === 'policies') loadPolicies();
+        }
+
+        function showHistory() {
+            document.getElementById('history-modal').classList.add('show');
+            loadHistory();
+        }
+
+        function closeHistory() {
+            document.getElementById('history-modal').classList.remove('show');
+        }
+
+                    <button class="btn btn-secondary" onclick="clearEstimate()">Clear</button>
+                </div>
+                <div id="result-estimate"></div>
+            </div>
+        </div>
+
+        <!-- Tab 2: Region Comparison -->
+        <div id="compare-tab" class="tab-content">
+            <div class="card">
+                <h3>Compare costs across AWS regions:</h3>
+                <textarea id="tf-compare" placeholder="resource &quot;aws_instance&quot; &quot;web&quot; {
+  instance_type = &quot;t3.medium&quot;
+}"></textarea>
+                <button class="btn" onclick="compareRegions()">Compare Regions</button>
+                <div id="comparison-result"></div>
+            </div>
+        </div>
+
+        <!-- Tab 3: Optimization -->
+        <div id="optimize-tab" class="tab-content">
+            <div class="card">
+                <h3>Get cost optimization suggestions:</h3>
+                <textarea id="tf-optimize" placeholder="resource &quot;aws_instance&quot; &quot;web&quot; {
+  instance_type = &quot;t3.large&quot;
+}"></textarea>
+                <button class="btn" onclick="getOptimizations()">Get Suggestions</button>
+                <div id="optimization-result"></div>
+            </div>
+        </div>
+
+        <!-- Tab 4: Policies -->
+        <div id="policies-tab" class="tab-content">
+            <div class="card">
+                <h3>🔒 Policy Management</h3>
+                <p style="color: #666; margin-bottom: 20px;">Control which policies are enforced in PR reviews</p>
+                <div id="policies-list"></div>
+            </div>
+        </div>
+
+        <!-- Tab 5: PR Estimates -->
+        <div id="pr-estimates-tab" class="tab-content">
+            <div class="card">
+                <h3>📊 Pull Request Estimates</h3>
+                <p style="color: #666; margin-bottom: 20px;">View cost estimates and policy violations from GitHub PRs</p>
+                <button class="btn" onclick="loadPREstimates()">Refresh</button>
+                <div id="pr-estimates-list"></div>
+            </div>
+        </div>
+
+        <!-- Tab 6: History -->
+        <div id="history-tab" class="tab-content">
+            <div class="card">
+                <h3>Cost Estimate History</h3>
+                <button class="btn" onclick="loadHistory()">Refresh</button>
+                <div id="history-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let uploadedFiles = [];
+        let currentEstimate = null;
+
+
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            handleFiles(e.dataTransfer.files);
+        });
+
+        function handleFiles(files) {
+            Array.from(files).forEach(file => {
+                if (file.name.endsWith('.tf')) {
+                    uploadedFiles.push(file);
+                }
+            });
+            displayFiles();
+        }
+
+        function displayFiles() {
+            const list = document.getElementById('file-list');
+            if (uploadedFiles.length === 0) {
+                list.innerHTML = '';
+                return;
+            }
+            list.innerHTML = '<h4>Selected Files:</h4>';
+            uploadedFiles.forEach((file, index) => {
+                list.innerHTML += `<div class="file-item">
+                    <span>📄 ${file.name}</span>
+                    <span class="remove-file" onclick="removeFile(${index})">✕</span>
+                </div>`;
+            });
+        }
+
+        function removeFile(index) {
+            uploadedFiles.splice(index, 1);
+            displayFiles();
+        }
+
+        function clearEstimate() {
+            uploadedFiles = [];
+            document.getElementById('tf-estimate').value = '';
+            document.getElementById('file-list').innerHTML = '';
+            document.getElementById('result-estimate').innerHTML = '';
+        }
+
+        async function calculateCost() {
+            const code = document.getElementById('tf-estimate').value;
+            const div = document.getElementById('result-estimate');
+            
+            let files = [];
+            
+            // Read uploaded files
+            if (uploadedFiles.length > 0) {
+                for (const file of uploadedFiles) {
+                    const content = await file.text();
+                    files.push({name: file.name, content: content});
+                }
+            } else if (code.trim()) {
+                files = [{name: 'main.tf', content: code}];
+            } else {
+                div.innerHTML = '<div style="color: #e74c3c; padding: 15px;">Please upload files or paste Terraform code</div>';
+                return;
+            }
+
+            div.innerHTML = '<div style="text-align: center; padding: 40px;"><div style="border: 4px solid #f3f3f3; border-top: 4px solid #667eea; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto;"></div><p style="margin-top: 20px;">Calculating costs...</p></div>';
+
+            try {
+                const res = await fetch('http://localhost:8000/api/v1/estimate', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({files: files})
+                });
+                const data = await res.json();
+                currentEstimate = data;
+                
+                let html = '<div class="result">';
+                html += '<div class="stats-grid">';
+                html += `<div class="stat-card"><div class="stat-value">$${data.total_monthly_cost.toFixed(2)}</div><div class="stat-label">Monthly Cost</div></div>`;
+                html += `<div class="stat-card"><div class="stat-value">${data.region || 'N/A'}</div><div class="stat-label">Region</div></div>`;
+                html += `<div class="stat-card"><div class="stat-value">${data.resource_count}</div><div class="stat-label">Resources</div></div>`;
+                html += `<div class="stat-card"><div class="stat-value">${files.length}</div><div class="stat-label">Files</div></div>`;
+                html += '</div>';
+
+                if (data.breakdown && data.breakdown.length > 0) {
+                    html += '<div class="chart-small"><canvas id="costChart"></canvas></div>';
+                    html += '<h4 style="margin-top: 20px;">Resource Breakdown:</h4>';
+                    data.breakdown.forEach(item => {
+                        html += `<div style="padding: 15px; background: white; margin: 8px 0; border-radius: 8px; display: flex; justify-content: space-between; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                            <div><strong>${item.resource}</strong><br><span style="color: #7f8c8d; font-size: 14px;">${item.type}</span></div>
+                            <div style="font-size: 24px; font-weight: bold; color: #27ae60;">$${item.monthly_cost.toFixed(2)}</div>
+                        </div>`;
+                    });
+                }
+                html += '</div>';
+                div.innerHTML = html;
+
+                // Draw chart
+                if (data.breakdown && data.breakdown.length > 0) {
+                    const ctx = document.getElementById('costChart').getContext('2d');
+                    new Chart(ctx, {
+                        type: 'doughnut',
+                        data: {
+                            labels: data.breakdown.map(i => i.resource),
+                            datasets: [{
+                                data: data.breakdown.map(i => i.monthly_cost),
+                                backgroundColor: ['#667eea', '#764ba2', '#f093fb', '#4facfe', '#43e97b']
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            plugins: {
+                                legend: { position: 'bottom' },
+                                title: { display: true, text: 'Cost Distribution', font: { size: 18 } }
+                            }
+                        }
+                    });
+                }
+            } catch (e) {
+                div.innerHTML = `<div style="color: #e74c3c; padding: 15px;">Error: ${e.message}</div>`;
+            }
+        }
+
+        async function compareRegions() {
+            const code = document.getElementById('tf-compare').value;
+            const div = document.getElementById('comparison-result');
+            
+            if (!code.trim()) {
+                div.innerHTML = '<div style="color: #e74c3c;">Please enter Terraform code</div>';
+                return;
+            }
+
+            div.innerHTML = '<p>Comparing regions...</p>';
+
+            try {
+                const res = await fetch('http://localhost:8000/api/v1/estimate', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({files: [{name: 'main.tf', content: code}]})
+                });
+                const estimateData = await res.json();
+                
+                const compareRes = await fetch('http://localhost:8002/api/v1/compare-regions', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({resources: estimateData.resources || []})
+                });
+                const data = await compareRes.json();
+
+                let html = '<div class="result">';
+                if (data.recommendation) {
+                    html += `<div style="background: linear-gradient(135deg, #d5f4e6 0%, #b8e6d5 100%); padding: 20px; border-radius: 8px; margin: 20px 0;">
+                        <h3>💡 Recommendation</h3>
+                        <p style="font-size: 18px; margin: 10px 0;">Deploy in <strong>${data.recommendation.cheapest_region}</strong> to save <strong>$${data.recommendation.potential_savings.toFixed(2)}</strong> (${data.recommendation.savings_percent}%)</p>
+                    </div>`;
+                }
+
+                html += '<div style="margin: 20px 0;">';
+                for (const [region, info] of Object.entries(data.regions)) {
+                    if (!info.error) {
+                        const isCheapest = data.recommendation && region === data.recommendation.cheapest_region;
+                        html += `<div class="region-card ${isCheapest ? 'cheapest' : ''}">
+                            <div style="font-weight: 600; margin-bottom: 5px;">${region}</div>
+                            <div style="font-size: 28px; font-weight: bold; color: #27ae60;">$${info.total.toFixed(2)}</div>
+                            ${isCheapest ? '<div style="color: #27ae60; font-weight: 600; margin-top: 5px;">✓ Cheapest</div>' : ''}
+                        </div>`;
+                    }
+                }
+                html += '</div>';
+
+                // Chart
+                const regions = Object.entries(data.regions).filter(([_, info]) => !info.error);
+                if (regions.length > 0) {
+                    html += '<div class="chart-container"><canvas id="regionChart"></canvas></div>';
+                }
+                html += '</div>';
+                
+                div.innerHTML = html;
+
+                // Draw chart
+                if (regions.length > 0) {
+                    const ctx = document.getElementById('regionChart').getContext('2d');
+                    new Chart(ctx, {
+                        type: 'bar',
+                        data: {
+                            labels: regions.map(([r, _]) => r),
+                            datasets: [{
+                                label: 'Monthly Cost ($)',
+                                data: regions.map(([_, info]) => info.total),
+                                backgroundColor: '#667eea'
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            plugins: {
+                                legend: { display: false },
+                                title: { display: true, text: 'Cost by Region', font: { size: 18 } }
+                            },
+                            scales: {
+                                y: { beginAtZero: true, title: { display: true, text: 'Cost ($)' } }
+                            }
+                        }
+                    });
+                }
+            } catch (e) {
+                div.innerHTML = `<div style="color: #e74c3c;">Error: ${e.message}</div>`;
+            }
+        }
+
+        async function getOptimizations() {
+            const code = document.getElementById('tf-optimize').value;
+            const div = document.getElementById('optimization-result');
+            
+            if (!code.trim()) {
+                div.innerHTML = '<div style="color: #e74c3c;">Please enter Terraform code</div>';
+                return;
+            }
+
+            div.innerHTML = '<p>Analyzing...</p>';
+
+            try {
+                const res = await fetch('http://localhost:8000/api/v1/estimate', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({files: [{name: 'main.tf', content: code}]})
+                });
+                const estimateData = await res.json();
+
+                const optimizeRes = await fetch('http://localhost:8002/api/v1/optimize', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({resources: estimateData.resources || [], region: 'us-east-1'})
+                });
+                const data = await optimizeRes.json();
+
+                let html = '<div class="result">';
+                html += `<div style="text-align: center; margin: 20px 0;">
+                    <div class="cost-total">Save $${data.total_potential_savings.toFixed(2)}</div>
+                    <p style="font-size: 18px; color: #7f8c8d;">${data.count} optimization suggestions</p>
+                </div>`;
+                
+                data.suggestions.forEach(s => {
+                    html += `<div class="suggestion ${s.impact}">
+                        <div style="font-weight: 600; font-size: 16px; margin-bottom: 5px;">${s.type}: ${s.resource}</div>
+                        <div style="margin: 10px 0;">${s.description}</div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+                            <div style="color: #27ae60; font-weight: bold; font-size: 20px;">Save: $${s.savings.toFixed(2)}/month</div>
+                            <div style="background: #667eea; color: white; padding: 4px 12px; border-radius: 4px; font-size: 12px;">${s.impact.toUpperCase()} IMPACT</div>
+                        </div>
+                        ${s.risk ? `<div style="color: #e67e22; margin-top: 10px;">⚠️ ${s.risk}</div>` : ''}
+                    </div>`;
+                });
+                html += '</div>';
+                
+                div.innerHTML = html;
+            } catch (e) {
+                div.innerHTML = `<div style="color: #e74c3c;">Error: ${e.message}</div>`;
+            }
+        }
+
+        async function loadHistory() {
+            const div = document.getElementById('history-list');
+            div.innerHTML = '<p>Loading history...</p>';
+
+            try {
+                const res = await fetch('http://localhost:8000/api/v1/estimates');
+                const data = await res.json();
+
+                if (data.estimates.length === 0) {
+                    div.innerHTML = '<p style="text-align: center; padding: 40px; color: #7f8c8d;">No estimates yet</p>';
+                    return;
+                }
+
+                let html = '';
+                data.estimates.forEach(est => {
+                    const utcDate = new Date(est.created_at);
+                    const istDate = new Date(utcDate.getTime() + (5.5 * 60 * 60 * 1000));
+                    const date = istDate.toLocaleString('en-IN', { 
+                        month: 'short', 
+                        day: 'numeric', 
+                        year: 'numeric', 
+                        hour: '2-digit', 
+                        minute: '2-digit',
+                        hour12: true 
+                    });
+                    html += `<div style="padding: 15px; background: #f5f7fa; border-radius: 8px; margin: 10px 0; cursor: pointer;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <div style="font-weight: 600; font-size: 18px;">$${est.total_monthly_cost.toFixed(2)}/month</div>
+                                <div style="color: #7f8c8d; font-size: 14px;">${date} • ${est.region} • ${est.resource_count} resources</div>
+                            </div>
+                        </div>
+                    </div>`;
+                });
+                div.innerHTML = html;
+            } catch (e) {
+                div.innerHTML = `<div style="color: #e74c3c;">Error loading history: ${e.message}</div>`;
+            }
+        }
+
+        async function loadPolicies() {
+            const div = document.getElementById('policies-list');
+            div.innerHTML = '<p>Loading policies...</p>';
+
+            try {
+                const res = await fetch('http://localhost:8000/api/v1/policies');
+                const data = await res.json();
+
+                let html = '<div style="display: grid; gap: 15px;">';
+                data.policies.forEach(policy => {
+                    const severityColors = {
+                        critical: '#c0392b',
+                        high: '#e67e22',
+                        medium: '#f39c12',
+                        low: '#3498db'
+                    };
+                    const color = severityColors[policy.severity] || '#95a5a6';
+                    
+                    html += `
+                        <div style="padding: 20px; background: white; border-radius: 8px; border-left: 4px solid ${color}; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                            <div style="display: flex; justify-content: space-between; align-items: start;">
+                                <div style="flex: 1;">
+                                    <div style="font-weight: 600; font-size: 16px; margin-bottom: 5px;">${policy.name}</div>
+                                    <div style="color: #666; font-size: 14px; margin-bottom: 10px;">${policy.description || ''}</div>
+                                    <div style="display: flex; gap: 10px;">
+                                        <span style="padding: 4px 12px; background: ${color}; color: white; border-radius: 12px; font-size: 12px; font-weight: 500;">${policy.severity.toUpperCase()}</span>
+                                        <span style="padding: 4px 12px; background: #e3f2fd; color: #1976d2; border-radius: 12px; font-size: 12px; font-weight: 500;">${policy.category}</span>
+                                        <span style="padding: 4px 12px; background: #f3e5f5; color: #7b1fa2; border-radius: 12px; font-size: 12px; font-weight: 500;">${policy.resource_type}</span>
+                                    </div>
+                                </div>
+                                <label style="position: relative; display: inline-block; width: 50px; height: 24px; margin-left: 20px;">
+                                    <input type="checkbox" ${policy.enabled ? 'checked' : ''} 
+                                           onchange="togglePolicy('${policy.id}', this.checked)"
+                                           style="opacity: 0; width: 0; height: 0;">
+                                    <span style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: ${policy.enabled ? '#2196F3' : '#ccc'}; transition: .4s; border-radius: 24px;">
+                                        <span style="position: absolute; content: ''; height: 18px; width: 18px; left: ${policy.enabled ? '29px' : '3px'}; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%;"></span>
+                                    </span>
+                                </label>
+                            </div>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+                div.innerHTML = html;
+            } catch (e) {
+                div.innerHTML = `<div style="color: #e74c3c;">Error loading policies: ${e.message}</div>`;
+            }
+        }
+
+        async function togglePolicy(policyId, enabled) {
+            try {
+                await fetch(`http://localhost:8000/api/v1/policies/${policyId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled })
+                });
+                loadPolicies();
+            } catch (e) {
+                alert('Failed to update policy: ' + e.message);
+            }
+        }
+
+        async function loadPREstimates() {
+            const div = document.getElementById('pr-estimates-list');
+            div.innerHTML = '<p>Loading PR estimates...</p>';
+
+            try {
+                const res = await fetch('http://localhost:8000/api/v1/pr-estimates');
+                const data = await res.json();
+
+                if (data.estimates.length === 0) {
+                    div.innerHTML = '<p style="text-align: center; padding: 40px; color: #7f8c8d;">No PR estimates yet</p>';
+                    return;
+                }
+
+                let html = '<div style="display: grid; gap: 15px; margin-top: 20px;">';
+                data.estimates.forEach((est, idx) => {
+                    const violations = est.policy_violations?.violations || [];
+                    const violationCount = est.policy_violations?.violation_count || 0;
+                    
+                    // Convert UTC to IST
+                    const utcDate = new Date(est.created_at);
+                    const istDate = new Date(utcDate.getTime() + (5.5 * 60 * 60 * 1000)); // Add 5:30 hours
+                    const formattedDate = istDate.toLocaleString('en-IN', { 
+                        month: 'short', 
+                        day: 'numeric', 
+                        year: 'numeric', 
+                        hour: '2-digit', 
+                        minute: '2-digit',
+                        hour12: true 
+                    });
+                    
+                    let violationsHtml = '';
+                    if (violationCount > 0) {
+                        const showAll = violations.length <= 5;
+                        const displayViolations = showAll ? violations : violations.slice(0, 3);
+                        
+                        violationsHtml = `
+                            <div style="margin-top: 15px; padding: 15px; background: #fff3cd; border-radius: 4px; border-left: 4px solid #ffc107;">
+                                <div style="font-weight: 600; margin-bottom: 10px; color: #856404;">⚠️ ${violationCount} Policy Violation${violationCount > 1 ? 's' : ''}</div>
+                                <div id="violations-${idx}">
+                                    ${displayViolations.map(v => `
+                                        <div style="padding: 8px; background: white; border-radius: 4px; margin-bottom: 8px; font-size: 14px;">
+                                            <span style="padding: 2px 8px; background: ${v.severity === 'critical' ? '#fee' : v.severity === 'high' ? '#ffeaa7' : '#fff3cd'}; color: ${v.severity === 'critical' ? '#c00' : v.severity === 'high' ? '#d63031' : '#856404'}; border-radius: 8px; font-size: 11px; font-weight: 500; margin-right: 8px;">${v.severity}</span>
+                                            <strong>${v.policy_name}</strong> - ${v.resource}
+                                        </div>
+                                    `).join('')}
+                                </div>
+                                ${!showAll ? `
+                                    <div id="more-violations-${idx}" style="display: none;">
+                                        ${violations.slice(3).map(v => `
+                                            <div style="padding: 8px; background: white; border-radius: 4px; margin-bottom: 8px; font-size: 14px;">
+                                                <span style="padding: 2px 8px; background: ${v.severity === 'critical' ? '#fee' : v.severity === 'high' ? '#ffeaa7' : '#fff3cd'}; color: ${v.severity === 'critical' ? '#c00' : v.severity === 'high' ? '#d63031' : '#856404'}; border-radius: 8px; font-size: 11px; font-weight: 500; margin-right: 8px;">${v.severity}</span>
+                                                <strong>${v.policy_name}</strong> - ${v.resource}
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                    <div style="margin-top: 8px;">
+                                        <button onclick="toggleViolations(${idx})" id="toggle-btn-${idx}" style="background: none; border: none; color: #667eea; cursor: pointer; font-weight: 600; padding: 4px 0;">
+                                            + Show ${violations.length - 3} more violation${violations.length - 3 > 1 ? 's' : ''}
+                                        </button>
+                                    </div>
+                                ` : ''}
+                            </div>
+                        `;
+                    }
+                    
+                    html += `
+                        <div style="padding: 20px; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 15px;">
+                                <div style="flex: 1;">
+                                    <div style="font-weight: 600; font-size: 18px; margin-bottom: 5px;">
+                                        <a href="${est.pr_url}" target="_blank" style="color: #667eea; text-decoration: none;">${est.pr_title || `PR #${est.pr_number}`}</a>
+                                    </div>
+                                    <div style="color: #7f8c8d; font-size: 14px;">${est.repo} #${est.pr_number} • ${formattedDate}</div>
+                                </div>
+                                <div style="font-size: 24px; font-weight: 700; color: #667eea;">$${est.total_cost.toFixed(2)}/mo</div>
+                            </div>
+                            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
+                                <div style="padding: 10px; background: #f5f7fa; border-radius: 4px;">
+                                    <div style="font-size: 12px; color: #666;">Region</div>
+                                    <div style="font-size: 16px; font-weight: 600;">${est.region}</div>
+                                </div>
+                                <div style="padding: 10px; background: #f5f7fa; border-radius: 4px;">
+                                    <div style="font-size: 12px; color: #666;">Resources</div>
+                                    <div style="font-size: 16px; font-weight: 600;">${est.resource_count}</div>
+                                </div>
+                                <div style="padding: 10px; background: #f5f7fa; border-radius: 4px;">
+                                    <div style="font-size: 12px; color: #666;">Currency</div>
+                                    <div style="font-size: 16px; font-weight: 600;">${est.currency}</div>
+                                </div>
+                            </div>
+                            ${violationsHtml}
+                        </div>
+                    `;
+                });
+                html += '</div>';
+                div.innerHTML = html;
+            } catch (e) {
+                div.innerHTML = `<div style="color: #e74c3c;">Error loading PR estimates: ${e.message}</div>`;
+            }
+        }
+
+        function toggleViolations(idx) {
+            const moreDiv = document.getElementById(`more-violations-${idx}`);
+            const btn = document.getElementById(`toggle-btn-${idx}`);
+            
+            if (moreDiv.style.display === 'none') {
+                moreDiv.style.display = 'block';
+                btn.textContent = '- Show less';
+            } else {
+                moreDiv.style.display = 'none';
+                const count = moreDiv.children.length;
+                btn.textContent = `+ Show ${count} more violation${count > 1 ? 's' : ''}`;
+            }
+        }
+
+        function exportCSV() {
+            if (!currentEstimate || !currentEstimate.breakdown) {
+                alert('Please calculate costs first');
+                return;
+            }
+
+            let csv = 'Resource,Type,Monthly Cost\n';
+            currentEstimate.breakdown.forEach(item => {
+                csv += `"${item.resource}","${item.type}",${item.monthly_cost}\n`;
+            });
+            csv += `\nTotal,,$${currentEstimate.total_monthly_cost}\n`;
+            csv += `Region,,${currentEstimate.region}\n`;
+            csv += `Resources,,${currentEstimate.resource_count}\n`;
+
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `kostructure-estimate-${Date.now()}.csv`;
+            a.click();
+            window.URL.revokeObjectURL(url);
+        }
+
+        // Initialize - Load PR estimates on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            loadPREstimates();
+        });
+    </script>
+    <style>
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</body>
+</html>
